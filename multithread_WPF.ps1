@@ -67,22 +67,26 @@ $WPFRadioButton_CopyFiles.Add_Click( {
         $WPFButton_Confirm.IsEnabled = $true
         $WPFCheckBox_Reboot.IsChecked = $false
         $WPFCheckBox_Reboot.IsEnabled = $false
-})
+    })
 
 $WPFRadioButton_CopyFilesAndInstall.Add_Click( {
         $WPFButton_Confirm.IsEnabled = $true
         $WPFCheckBox_Reboot.IsEnabled = $true
-})
+    })
 
 $WPFCheckBox_Reboot.Add_Click( {
-})
+    })
 
 $WPFButton_Confirm.Add_Click( {
         "code here"
+       1..60 | ForEach-Object {
+       Start-Sleep -Seconds 1
+        write-host $_
+       }
         pause
         $form.Close()
 
-})
+    })
 
 #===========================================================================
 # Shows the form
