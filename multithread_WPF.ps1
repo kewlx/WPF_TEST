@@ -49,11 +49,58 @@ $xaml.SelectNodes("//*[@Name]") | ForEach-Object {
 #===========================================================================
 
 function Compare-somefunction {
-   
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory,
+            ValueFromPipeline,
+            ValueFromPipelineByPropertyName)]
+        [ValidateNotNullOrEmpty()]
+        [ValidateScript( {
+                if (-Not ($_ | Test-Path) ) {
+                    throw "File does not exist"
+                }
+                if (-Not ($_ | Test-Path -PathType Leaf) ) {
+                    throw "The path argument must be a file. Folder paths are not allowed."
+                }
+                if ($_ -notmatch "(\.json)") {
+                    throw "The file specified in the path argument must be .json"
+                }
+                return $true 
+            })]
+        [string]$Path
+    )
+
 }
 
 function Copy-somefunction {
-   
+    [CmdletBinding(SupportsShouldProcess)]
+    param (
+        [Parameter(Mandatory,
+            ValueFromPipeline,
+            ValueFromPipelineByPropertyName)]
+        [ValidateScript( {
+                if (-Not ($_ | Test-Path) ) {
+                    throw "File or folder does not exist"
+                }
+                return $true 
+            })]
+        [string]$Source,
+
+        [Parameter(
+            ValueFromPipeline,
+            ValueFromPipelineByPropertyName)]
+        [ValidateScript( {
+                if (-Not ($_ | Test-Path) ) {
+                    throw "File or folder does not exist"
+                }
+                if (-Not ($_ | Test-Path -PathType container) ) {
+                    throw "The Path argument must be a folder. Folder paths are not allowed."
+                }
+                return $true 
+            })]
+        [string]$Destination = "$Home\downloads"
+    )
+
 }
 
 $source = "$home\desktop"
@@ -78,12 +125,13 @@ $WPFCheckBox_Reboot.Add_Click( {
     })
 
 $WPFButton_Confirm.Add_Click( {
-        "code here"
-       1..60 | ForEach-Object {
-       Start-Sleep -Seconds 1
-        write-host $_
-       }
-        pause
+        Compare-somefunction -Path "\\server\path\here"
+        Copy-somefunction -Source $source -Destination $destination
+        1..60 | ForEach-Object {
+            Start-Sleep -Seconds 1
+            Write-Host $_
+        }
+        Pause
         $form.Close()
 
     })
