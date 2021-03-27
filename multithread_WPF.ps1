@@ -1,3 +1,10 @@
+$syncHash = [hashtable]::Synchronized(@{})
+$newRunspace =[runspacefactory]::CreateRunspace()
+$newRunspace.ApartmentState = "STA"
+$newRunspace.ThreadOptions = "ReuseThread"         
+$newRunspace.Open()
+$newRunspace.SessionStateProxy.SetVariable("syncHash",$syncHash)
+
 $inputXML = @"
 <Window x:Name="Windows_OS_Upgrade_Form" x:Class="WpfApp2.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -16,6 +23,8 @@ $inputXML = @"
 </Window>
 "@
 
+
+
 $inputXML = $inputXML -replace 'mc:Ignorable="d"', '' -replace "x:N", 'N' -replace '^<Win.*', '<Window'
 [void][System.Reflection.Assembly]::LoadWithPartialName('presentationframework')
 [xml]$XAML = $inputXML
@@ -23,7 +32,7 @@ $inputXML = $inputXML -replace 'mc:Ignorable="d"', '' -replace "x:N", 'N' -repla
 #Read XAML 
 $reader = (New-Object System.Xml.XmlNodeReader $xaml)
 try {
-    $Form = [Windows.Markup.XamlReader]::Load( $reader )
+    $syncHash.Window = [Windows.Markup.XamlReader]::Load( $reader )
 }
 catch {
     Write-Warning "Unable to parse XML, with error: $PSItem `n Ensure that there are NO SelectionChanged or TextChanged properties in your textboxes (PowerShell cannot process them)"
@@ -35,11 +44,10 @@ catch {
 #===========================================================================
   
 $xaml.SelectNodes("//*[@Name]") | ForEach-Object {
-    #"trying item $($_.Name)";
     try {
-        Set-Variable -Name "WPF$($PSItem.Name)" -Value $Form.FindName($PSItem.Name) -ErrorAction Stop
-    }
-    catch {
+        Write-Output "Adding $($PSItem.Name)"
+        $syncHash.Add($PSItem.Name,$syncHash.Window.FindName($PSItem.Name))
+    } catch {
         throw
     }
 }
@@ -48,97 +56,133 @@ $xaml.SelectNodes("//*[@Name]") | ForEach-Object {
 # Use this space to add code to the various form elements in your GUI
 #===========================================================================
 
-function Compare-somefunction {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline,
-            ValueFromPipelineByPropertyName)]
-        [ValidateNotNullOrEmpty()]
-        [ValidateScript( {
-                if (-Not ($_ | Test-Path) ) {
-                    throw "File does not exist"
+
+$syncHash.Window.add_Loaded({
+    $global:Session = [PowerShell]::Create().AddScript({
+
+        $syncHash.Window.Dispatcher.invoke(
+            [action]{
+                function Compare-somefunction {
+                    [CmdletBinding()]
+                    param (
+                        [Parameter(Mandatory,
+                            ValueFromPipeline,
+                            ValueFromPipelineByPropertyName)]
+                        [ValidateNotNullOrEmpty()]
+                        [ValidateScript( {
+                                if (-Not ($_ | Test-Path) ) {
+                                    throw "File does not exist"
+                                }
+                                if (-Not ($_ | Test-Path -PathType Leaf) ) {
+                                    throw "The path argument must be a file. Folder paths are not allowed."
+                                }
+                                if ($_ -notmatch "(\.json)") {
+                                    throw "The file specified in the path argument must be .json"
+                                }
+                                return $true 
+                            })]
+                        [string]$Path
+                    )
+                
                 }
-                if (-Not ($_ | Test-Path -PathType Leaf) ) {
-                    throw "The path argument must be a file. Folder paths are not allowed."
+                
+                function Copy-somefunction {
+                    [CmdletBinding(SupportsShouldProcess)]
+                    param (
+                        [Parameter(Mandatory,
+                            ValueFromPipeline,
+                            ValueFromPipelineByPropertyName)]
+                        [ValidateScript( {
+                                if (-Not ($_ | Test-Path) ) {
+                                    throw "File or folder does not exist"
+                                }
+                                return $true 
+                            })]
+                        [string]$Source,
+                
+                        [Parameter(
+                            ValueFromPipeline,
+                            ValueFromPipelineByPropertyName)]
+                        [ValidateScript( {
+                                if (-Not ($_ | Test-Path) ) {
+                                    throw "File or folder does not exist"
+                                }
+                                if (-Not ($_ | Test-Path -PathType container) ) {
+                                    throw "The Path argument must be a folder. Folder paths are not allowed."
+                                }
+                                return $true 
+                            })]
+                        [string]$Destination = "$Home\downloads"
+                    )
+                
                 }
-                if ($_ -notmatch "(\.json)") {
-                    throw "The file specified in the path argument must be .json"
+                
+                $source = "$home\desktop"
+                $destination = "$home\downloads"
+                
+                $EndTailArgs = @{
+                    Wait = $True
                 }
-                return $true 
-            })]
-        [string]$Path
-    )
-
-}
-
-function Copy-somefunction {
-    [CmdletBinding(SupportsShouldProcess)]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline,
-            ValueFromPipelineByPropertyName)]
-        [ValidateScript( {
-                if (-Not ($_ | Test-Path) ) {
-                    throw "File or folder does not exist"
+                
+            $syncHash.RadioButton_CopyFiles.Add_Click( {
+                $syncHash.Button_Confirm.IsEnabled = $true
+                $syncHash.CheckBox_Reboot.IsChecked = $false
+                $syncHash.CheckBox_Reboot.IsEnabled = $false
+            })
+            
+            $syncHash.RadioButton_CopyFilesAndInstall.Add_Click( {
+                $syncHash.Button_Confirm.IsEnabled = $true
+                $syncHash.CheckBox_Reboot.IsEnabled = $true
+            })
+            
+            $syncHash.CheckBox_Reboot.Add_Click( {
+            })
+            
+            $syncHash.Button_Confirm.Add_Click( {
+                Compare-somefunction -Path "\\server\path\here"
+                Copy-somefunction -Source $source -Destination $destination
+                1..60 | ForEach-Object {
+                    Start-Sleep -Seconds 1
+                    Write-Host $_
                 }
-                return $true 
-            })]
-        [string]$Source,
-
-        [Parameter(
-            ValueFromPipeline,
-            ValueFromPipelineByPropertyName)]
-        [ValidateScript( {
-                if (-Not ($_ | Test-Path) ) {
-                    throw "File or folder does not exist"
-                }
-                if (-Not ($_ | Test-Path -PathType container) ) {
-                    throw "The Path argument must be a folder. Folder paths are not allowed."
-                }
-                return $true 
-            })]
-        [string]$Destination = "$Home\downloads"
-    )
-
-}
-
-$source = "$home\desktop"
-$destination = "$home\downloads"
-
-$EndTailArgs = @{
-    Wait = $True
-}
-
-$WPFRadioButton_CopyFiles.Add_Click( {
-        $WPFButton_Confirm.IsEnabled = $true
-        $WPFCheckBox_Reboot.IsChecked = $false
-        $WPFCheckBox_Reboot.IsEnabled = $false
+                Pause
+                $form.Close()
+        
+            })
+        
+        },"Normal"
+        )
     })
 
-$WPFRadioButton_CopyFilesAndInstall.Add_Click( {
-        $WPFButton_Confirm.IsEnabled = $true
-        $WPFCheckBox_Reboot.IsEnabled = $true
-    })
 
-$WPFCheckBox_Reboot.Add_Click( {
-    })
+    $Session.Runspace = $newRunspace
+    $global:Handle = $Session.BeginInvoke()
+})
 
-$WPFButton_Confirm.Add_Click( {
-        Compare-somefunction -Path "\\server\path\here"
-        Copy-somefunction -Source $source -Destination $destination
-        1..60 | ForEach-Object {
-            Start-Sleep -Seconds 1
-            Write-Host $_
-        }
-        Pause
-        $form.Close()
 
-    })
 
 #===========================================================================
 # Shows the form
 #===========================================================================
 #write-host "To show the form, run the following" -ForegroundColor Cyan
 
-$Form.ShowDialog() | Out-Null
+#$Form.ShowDialog() | Out-Null
+
+# check if a command is still running when exiting the GUI
+$syncHash.Window.add_Closing({
+    if ($null -ne $Session -and $Handle.IsCompleted -eq $false) {
+        [Windows.MessageBox]::Show('A command is still running.')
+        # the event object is automatically passed through as $_
+        $PSItem.Cancel = $true
+    }
+})
+
+$syncHash.Window.add_Closed({
+    if ($null -ne $Session) {
+        $Session.EndInvoke($Handle)
+    }
+    
+    $newRunspace.Close()
+})
+
+$syncHash.Window.ShowDialog() | Out-Null
